@@ -7,8 +7,13 @@
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include "passinfo.h"
 #include "DHT.h"
+
+// Create passinfo.h in your local repository if it does not exists (I'm not adding it for obvious reasons)
+//  passinfo.h contains the following two lines:
+// #define WIFI_SSID  "my_ssid"
+// #define WIFI_PASS  "******"
+#include "passinfo.h"
 
 #define ZONE "zone1"
 
