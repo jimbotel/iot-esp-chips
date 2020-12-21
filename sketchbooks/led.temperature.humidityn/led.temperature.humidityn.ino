@@ -7,6 +7,7 @@
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include "passinfo.h"
 #include "DHT.h"
 
 #define ZONE "zone1"
@@ -17,8 +18,8 @@
 //#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 
 // Change the credentials below, so your ESP8266 connects to your router
-const char* ssid = "my_ssid";
-const char* password = "********";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASS;
 
 // Change the variable to your Raspberry Pi IP address, so it connects to your MQTT broker
 const char* mqtt_server = "192.168.1.109";
