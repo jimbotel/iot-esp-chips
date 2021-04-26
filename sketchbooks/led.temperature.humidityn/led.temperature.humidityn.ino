@@ -1,3 +1,4 @@
+
 /*****
  
  All the resources for this project:
@@ -8,6 +9,8 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include "DHT.h"
+#include <Adafruit_ADS1015.h>
+
 
 // Create passinfo.h in your local repository if it does not exists (I'm not adding it for obvious reasons)
 //  passinfo.h contains the following two lines:
@@ -15,30 +18,47 @@
 // #define WIFI_PASS  "******"
 #include "passinfo.h"
 
+// Change the credentials below, so your ESP8266 connects to your router
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASS;
+
+// MQTT broker IP address (Raspberry Pi IP address)
+#define MQTT_SERVER  "192.168.1.109"
 #define ZONE "zone1"
+
+const char* mqtt_server = MQTT_SERVER;
 
 // Uncomment one of the lines bellow for whatever DHT sensor type you're using!
 #define DHTTYPE DHT11   // DHT 11
 //#define DHTTYPE DHT21   // DHT 21 (AM2301)
 //#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 
-// Change the credentials below, so your ESP8266 connects to your router
-const char* ssid = WIFI_SSID;
-const char* password = WIFI_PASS;
-
-// Change the variable to your Raspberry Pi IP address, so it connects to your MQTT broker
-const char* mqtt_server = "192.168.1.109";
 
 // Initializes the espClient. You should change the espClient name if you have multiple ESPs running in your home automation system
 String nombreini = "ESP8266Client_";
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// DHT Sensor - GPIO 5 = D1 on ESP-12E NodeMCU board
-const int DHTPin = 5;
 
-// Lamp - LED - GPIO 4 = D2 on ESP-12E NodeMCU board
-const int lamp = 4;
+// Crear objeto de la clase
+Adafruit_ADS1115 ads;
+ 
+// Por defecto el valor de referencia es 6,144V. El factor de escala de esta referencia es de 0,1875mV
+// Otros: 
+//  Parámetro      PGA    Referencia (V)   Factor de escala
+//  GAIN_TWOTHIRDS  2/3    6,144 V          0,1875 mV
+//  GAIN_ONE        1      4,096 V          0,1250 mV
+//  GAIN_TWO        2      2,048 V          0,0625 mV
+//  GAIN_FOUR       4      1,024 V          0,0312 mV
+//  GAIN_EIGHT      8      0,512 V          0,0156 mV
+//  GAIN_SIXTEEN    16     0,256 V          0,0078 mV
+float factorEscala =  0.1250F; 
+
+// DHT Sensor - GPIO 14 = D5 on ESP-12E NodeMCU board
+const int DHTPin = 14;
+
+// Lamp - LED - GPIO 12 = D6 on ESP-12E NodeMCU board
+const int lamp = 12;
 
 // Initialize DHT sensor.
 DHT dht(DHTPin, DHTTYPE);
@@ -46,16 +66,11 @@ DHT dht(DHTPin, DHTTYPE);
 // int BAT= A0;              //Analog channel A0 as used to measure battery voltage
 // float RatioFactor=1;  //Resistors Ration Factor
 
-//const int AirValue = 790;   //you need to replace this value with Value_1
-//const int WaterValue = 390;  //you need to replace this value with Value_2
-//const int SensorPin = A0;
-//int soilMoistureValue = 0;
-//int soilmoisturepercent=0;
 const float AirValue = 747.0;   //you need to replace this value with Value_1 (orig: 790.0)
 const float WaterValue = 316.0;  //you need to replace this value with Value_2 (orig: 390.0)
 const int SensorPin = A0;
 float soilMoistureValue = 0.0;
-int soilmoisturepercent=0;
+float soilmoisturepercent=0;
 
 // Timers auxiliar variables
 long now = millis();
@@ -160,6 +175,12 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
+  // Factor de escala
+  ads.setGain(GAIN_ONE);
+ 
+  // Iniciar el ADS1115
+  ads.begin();
+
 }
 
 // For this project, you don't need to change anything in the loop function. Basically it ensures that you ESP is connected to your broker
@@ -213,7 +234,8 @@ void loop() {
     }
     // soilMoistureValue = analogRead(SensorPin);  //put Sensor insert into soil
     soilMoistureValue=(float)soilMoistureValue/10.0;
-    soilmoisturepercent = map((int)soilMoistureValue, AirValue, WaterValue, 0, 100);
+    // soilmoisturepercent = map((float)soilMoistureValue, AirValue, WaterValue, 0, 100);
+    soilmoisturepercent = 100*(AirValue-soilMoistureValue)/(AirValue-WaterValue);
     Serial.print("soilMoistureValue: ");
     Serial.print(soilMoistureValue);
     Serial.print(" --> Soil moisture Percentage: ");
@@ -222,16 +244,28 @@ void loop() {
     if(soilmoisturepercent > 100)
     {
       Serial.println(" --> setting to 100 %");
-      soilmoisturepercent = 100;
+      soilmoisturepercent = 100.0;
     } else if(soilmoisturepercent <0)
     {
       Serial.println(" --> setting to 0 %");
+      soilmoisturepercent = 0.0;
     }
     static char moistureStr[7];
     dtostrf(soilmoisturepercent, 6, 2, moistureStr);
 
     // Publishes input voltage
     client.publish("garden/" ZONE "/moisturepercent", moistureStr);
+
+  // Obtener el diferencial
+  short diferencia_0_1 = ads.readADC_Differential_0_1();
+  // Convertir en voltios 
+  float voltios = (diferencia_0_1 * factorEscala)/1000.0;
+  
+  Serial.print("Diferencia 0-1 = "); 
+  Serial.println(diferencia_0_1); 
+  Serial.print("Voltage = ");
+  Serial.println(voltios,4);
+  Serial.println();
 
     /////////////////////////////////////Battery Voltage//////////////////////////////////  
 //    for(unsigned int i=0;i<10;i++){
